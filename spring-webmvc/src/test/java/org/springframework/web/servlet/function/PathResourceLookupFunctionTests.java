@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.function.Function;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.core.io.ClassPathResource;
@@ -100,6 +101,99 @@ class PathResourceLookupFunctionTests {
 		return new DefaultServerRequest(
 				PathPatternsTestUtils.initRequest(httpMethod, requestUri, true),
 				Collections.emptyList());
+	}
+
+	@Test
+	@DisplayName("Reject path with '../' traversal")
+	void rejectDirectPathTraversal() {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+		ServerRequest request = initRequest("GET", "/resources/../../secret.txt");
+
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+	}
+
+	@Test
+	@DisplayName("Reject URL-encoded '../' path traversal")
+	void rejectEncodedPathTraversal() {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+
+		// URL-encoded "../" = %2e%2e/
+		ServerRequest request = initRequest("GET", "/resources/%2e%2e/%2e%2e/secret.txt");
+
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+	}
+
+	@Test
+	@DisplayName("Reject double URL-encoded '../' path traversal")
+	void rejectDoubleEncodedPathTraversal() throws Exception {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+
+		// Double encoded "../" = %252e%252e/
+		String doubleEncodedPath = "/resources/%252e%252e/%252e%252e/secret.txt";
+		ServerRequest request = initRequest("GET", doubleEncodedPath);
+
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+	}
+
+	@Test
+	@DisplayName("Reject access to WEB-INF directory")
+	void rejectWebInfPath() {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+
+		ServerRequest request = initRequest("GET", "/resources/WEB-INF/web.xml");
+
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+	}
+
+	@Test
+	@DisplayName("Reject access to META-INF directory")
+	void rejectMetaInfPath() {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+
+		ServerRequest request = initRequest("GET", "/resources/META-INF/MANIFEST.MF");
+
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+	}
+
+	@Test
+	@DisplayName("Reject path with URL scheme to prevent resource escape")
+	void rejectPathsContainingUrlScheme() {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+
+		ServerRequest request = initRequest("GET", "/resources/url:http/evil");
+		Optional<Resource> result = function.apply(request);
+		assertThat(result).isNotPresent();
+
+		ServerRequest request2 = initRequest("GET", "/resources/http:/evil");
+		Optional<Resource> result2 = function.apply(request2);
+		assertThat(result2).isNotPresent();
+	}
+
+	@Test
+	@DisplayName("Empty or blank path returns empty Optional")
+	void emptyOrBlankPath() {
+		ClassPathResource location = new ClassPathResource("org/springframework/web/servlet/function/");
+		PathResourceLookupFunction function = new PathResourceLookupFunction("/resources/**", location);
+
+		ServerRequest emptyRequest = initRequest("GET", "/resources/");
+		ServerRequest blankRequest = initRequest("GET", "/resources");
+
+		Optional<Resource> resultEmpty = function.apply(emptyRequest);
+		Optional<Resource> resultBlank = function.apply(blankRequest);
+
+		assertThat(resultEmpty).isNotPresent();
+		assertThat(resultBlank).isNotPresent();
 	}
 
 }
