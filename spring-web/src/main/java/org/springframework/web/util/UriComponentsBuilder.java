@@ -930,6 +930,14 @@ public class UriComponentsBuilder implements UriBuilder, Cloneable {
 		this.ssp = null;
 	}
 
+	void resetPortIfDefaultForScheme() {
+		if (this.scheme != null &&
+				(((this.scheme.equals("http") || this.scheme.equals("ws")) && "80".equals(this.port)) ||
+						((this.scheme.equals("https") || this.scheme.equals("wss")) && "443".equals(this.port)))) {
+			port(null);
+		}
+	}
+
 
 	/**
 	 * Public declaration of Object's {@code clone()} method.
